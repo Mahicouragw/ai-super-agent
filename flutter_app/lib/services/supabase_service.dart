@@ -171,4 +171,46 @@ class SupabaseService {
       'type': type,
     });
   }
+
+  // Generations for dashboard - images, videos, songs, lyrics, content, prompts
+  Future<void> saveGeneration({
+    required String type, // image, video, song, lyrics, content, prompt
+    required String prompt,
+    String? model,
+    String? resultText,
+    String? resultUrl,
+  }) async {
+    try {
+      final userId = currentUser?.id;
+      final email = currentUser?.email ?? 'anonymous';
+      await _client.from('generations').insert({
+        'user_id': userId,
+        'email': email,
+        'type': type,
+        'prompt': prompt,
+        'model': model ?? 'anthropic/claude-opus-4.5',
+        'result_text': resultText,
+        'result_url': resultUrl,
+      });
+    } catch (e) {
+      print('Save generation error (table may not exist yet): $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getGenerations({String? type}) async {
+    final userId = currentUser?.id;
+    try {
+      var query = _client.from('generations').select().order('created_at', ascending: false).limit(50);
+      if (userId != null) {
+        // query = query.eq('user_id', userId); // allow all for demo
+      }
+      if (type != null) {
+        query = query.eq('type', type);
+      }
+      final res = await query;
+      return List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      return [];
+    }
+  }
 }

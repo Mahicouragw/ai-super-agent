@@ -3,7 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
+import 'screens/auth/otp_verification_screen.dart';
+import 'screens/home/dashboard_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'screens/model_selector_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +31,10 @@ class AISuperAgentApp extends StatelessWidget {
       routes: {
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
-        '/home': (context) => const HomeScreen(),
+        '/verify-otp': (context) => const OtpVerificationScreen(),
+        '/home': (context) => const DashboardScreen(), // New dashboard with prompt box + model chooser
+        '/old-home': (context) => const HomeScreen(),
+        '/models': (context) => const ModelSelectorScreen(),
       },
     );
   }
@@ -45,75 +51,27 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    // Listen to auth changes
-    SupabaseConfig.client.auth.onAuthStateChange.listen((data) {
-      if (mounted) setState(() {});
-    });
+    // Listen to auth changes for auto-login after OTP verification
+    try {
+      SupabaseConfig.client.auth.onAuthStateChange.listen((data) {
+        if (mounted) setState(() {});
+      });
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    final session = SupabaseConfig.client.auth.currentSession;
-    if (session != null) {
-      // Check if email confirmed
-      final user = session.user;
-      if (user.emailConfirmedAt == null) {
-        return const VerificationPendingScreen();
+    try {
+      final session = SupabaseConfig.client.auth.currentSession;
+      if (session != null) {
+        // After OTP verification, user is auto-confirmed and goes directly to dashboard
+        // No more "Supabase stored" messages - just dashboard with prompt box
+        return const DashboardScreen();
       }
-      return const HomeScreen();
+    } catch (e) {
+      print('AuthGate offline: $e');
     }
+    // If no session, show login (just email + password)
     return const LoginScreen();
-  }
-}
-
-class VerificationPendingScreen extends StatelessWidget {
-  const VerificationPendingScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Verify Email')),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.mark_email_read, size: 80, color: Colors.deepPurple),
-            const SizedBox(height: 20),
-            const Text(
-              'Verification email sent!',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Please check your inbox and click the verification link. After verifying, come back and login.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
-                await SupabaseConfig.client.auth.signOut();
-                if (context.mounted) Navigator.pushReplacementNamed(context, '/login');
-              },
-              child: const Text('Go to Login'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final email = SupabaseConfig.client.auth.currentUser?.email;
-                if (email != null) {
-                  await SupabaseConfig.client.auth.resend(type: OtpType.signup, email: email);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Verification email resent!')),
-                    );
-                  }
-                }
-              },
-              child: const Text('Resend Verification Email'),
-            )
-          ],
-        ),
-      ),
-    );
   }
 }
