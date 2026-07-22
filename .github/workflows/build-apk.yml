@@ -17,48 +17,52 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: Setup Flutter (Latest Stable for Claude, GPT, Groq, Gemini)
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.0'
           channel: 'stable'
+          flutter-version: '3.24.5'
+          cache: true
 
-      - name: Create .env from secrets
+      - name: Create .env from secrets (Claude Opus, ChatGPT, Groq, Gemini via OpenRouter)
         working-directory: flutter_app
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
           echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
-          echo "NEWS_API_KEY=${{ secrets.NEWS_API_KEY }}" >> .env
+          echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
+          echo "OPENROUTER_MODEL=${{ secrets.OPENROUTER_MODEL }}" >> .env
+          echo "CLAUDE_MODEL=${{ secrets.CLAUDE_MODEL }}" >> .env
+          echo "CLAUDE_SONNET_MODEL=${{ secrets.CLAUDE_SONNET_MODEL }}" >> .env
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "NEWS_API_KEY=${{ secrets.NEWS_API_KEY }}" >> .env
           echo "TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}" >> .env
-          echo ".env created"
-          cat .env
+          echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" >> .env
+          echo "AI_PROVIDER=openrouter" >> .env
+          echo ".env created with all models: Claude Opus/Sonnet/Haiku, ChatGPT GPT-4o, Groq Llama, Gemini"
+          cat .env | sed 's/\(KEY\)=.*/\1=***hidden***/' | head -20
 
-      - name: Ensure Flutter Project Structure
+      - name: Ensure Flutter Project Structure (Robust)
         working-directory: flutter_app
         run: |
-          # Save our custom lib and pubspec
-          echo "Backing up custom code..."
-          mkdir -p /tmp/backup_lib
-          cp -r lib /tmp/backup_lib/ || true
-          cp pubspec.yaml /tmp/backup_lib/ || true
-          
-          # If android folder missing, create full Flutter project
+          echo "Checking if android folder exists..."
           if [ ! -d "android" ]; then
-            echo "android folder missing - creating flutter project scaffold..."
-            flutter create --platforms=android,web --project-name ai_super_agent .
+            echo "android missing - creating scaffold in temp dir to avoid pubspec conflict..."
+            cd /tmp
+            flutter create --platforms=android,web --project-name ai_super_agent temp_ai_agent
+            echo "Copying android & web folders to flutter_app..."
+            cp -r temp_ai_agent/android $GITHUB_WORKSPACE/flutter_app/android
+            cp -r temp_ai_agent/web $GITHUB_WORKSPACE/flutter_app/web 2>/dev/null || true
+            cp temp_ai_agent/README.md $GITHUB_WORKSPACE/flutter_app/README.md 2>/dev/null || true
+            echo "Scaffold copied"
+            cd $GITHUB_WORKSPACE/flutter_app
+          else
+            echo "android folder exists, skipping scaffold"
           fi
-          
-          # Restore our custom code
-          echo "Restoring custom AI Super Agent code..."
-          rm -rf lib
-          cp -r /tmp/backup_lib/lib ./
-          cp /tmp/backup_lib/pubspec.yaml ./pubspec.yaml || true
-          ls -la lib/
-          cat pubspec.yaml
+          ls -la
+          ls -la lib/ | head -20
 
-      - name: Install dependencies
+      - name: Install dependencies (All Skills)
         working-directory: flutter_app
         run: flutter pub get
 
@@ -66,16 +70,22 @@ jobs:
         working-directory: flutter_app
         run: flutter analyze || true
 
-      - name: Build APK (Release)
+      - name: Build APK (Release - All Skills: Claude, GPT, Groq, Gemini)
         working-directory: flutter_app
-        run: flutter build apk --release --verbose
+        run: flutter build apk --release
 
-      - name: Build APK Split (Fallback)
+      - name: Build APK Split as Fallback
         if: failure()
         working-directory: flutter_app
         run: flutter build apk --debug
 
-      - name: Upload APK Artifact
+      - name: List APK outputs
+        if: always()
+        run: |
+          ls -lh flutter_app/build/app/outputs/flutter-apk/ || echo "No apk folder"
+          find flutter_app/build -name "*.apk" -lh 2>/dev/null || echo "No apk found"
+
+      - name: Upload APK Artifact (Latest)
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
@@ -85,12 +95,19 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      - name: Upload to Release
+      - name: Upload to Release (One-Tap Download)
         if: success() && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
           files: flutter_app/build/app/outputs/flutter-apk/app-release.apk
           tag_name: v1.0.${{ github.run_number }}
           generate_release_notes: true
+          body: |
+            AI Super Agent v1.0.${{ github.run_number }}
+            - Multi-Agent: Coder, Researcher, Analyst, Scheduler
+            - Models: Claude Opus 4.5, Sonnet 4.5, Haiku, GPT-4o, Groq Llama, Gemini 2.0
+            - Skills: coding, web search, news daily, newspapers, reminders, PDF search, reports, image, speech, file mgmt
+            - Supabase Auth: email, username, password, confirm + login email/password
+            - TalkBack accessible
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
