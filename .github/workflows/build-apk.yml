@@ -5,9 +5,6 @@ permissions:
 on:
   push:
     branches: ["main"]
-    paths:
-      - "flutter_app/**"
-      - ".github/workflows/build-apk.yml"
   workflow_dispatch:
 
 jobs:
@@ -29,17 +26,14 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create .env from secrets (All Models: Claude Opus/Sonnet, ChatGPT, Groq, Gemini)
-        working-directory: flutter_app
+      - name: Create .env for all models Claude Opus, GPT-4o, Groq, Gemini
         run: |
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
-          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
-          echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
-          echo "OPENROUTER_MODEL=${{ secrets.OPENROUTER_MODEL }}" >> .env
-          echo "CLAUDE_MODEL=${{ secrets.CLAUDE_MODEL }}" >> .env
-          echo "CLAUDE_SONNET_MODEL=${{ secrets.CLAUDE_SONNET_MODEL }}" >> .env
-          echo "AI_PROVIDER=openrouter" >> .env
-          echo ".env created"
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > flutter_app/.env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> flutter_app/.env
+          echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> flutter_app/.env
+          echo "OPENROUTER_MODEL=${{ secrets.OPENROUTER_MODEL }}" >> flutter_app/.env
+          echo "AI_PROVIDER=openrouter" >> flutter_app/.env
+          cat flutter_app/.env | sed 's/KEY=.*/KEY=***hidden***/'
 
       - name: Get dependencies
         working-directory: flutter_app
@@ -49,33 +43,22 @@ jobs:
         working-directory: flutter_app
         run: flutter create --platforms=android .
 
-      - name: Add permissions (Internet, Mic, Location, Storage)
-        working-directory: flutter_app
+      - name: Add internet and mic permissions
         run: |
-          python3 - << 'PY'
-          p = 'android/app/src/main/AndroidManifest.xml'
-          s = open(p).read()
-          perms = '''    <uses-permission android:name="android.permission.INTERNET"/>
-              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-              <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-              <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-          '''
-          if 'RECORD_AUDIO' not in s:
-              s = s.replace('<application', perms + '    <application', 1)
-          open(p,'w').write(s)
-          print('Manifest patched with all skills permissions')
-          PY
+          MANIFEST=flutter_app/android/app/src/main/AndroidManifest.xml
+          if ! grep -q "RECORD_AUDIO" "$MANIFEST"; then
+            sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
+            echo "Permissions added"
+          fi
+          cat "$MANIFEST" | grep permission
 
-      - name: Build debug APK (All Skills: Claude, GPT, Groq, Gemini, Multi-Agent)
+      - name: Build debug APK with all skills
         working-directory: flutter_app
         run: flutter build apk --debug
 
-      - name: Give APK friendly name
+      - name: Rename APK
         working-directory: flutter_app
-        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/AISuperAgent.apk
+        run: cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/AISuperAgent.apk && ls -lh build/app/outputs/flutter-apk/
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -84,12 +67,10 @@ jobs:
           path: flutter_app/build/app/outputs/flutter-apk/AISuperAgent.apk
           retention-days: 90
 
-      - name: Upload APK as Release (One-Tap)
-        if: github.ref == 'refs/heads/main'
+      - name: Upload as Release One-Tap
         run: python3 .github/scripts/release_apk.py
-        working-directory: flutter_app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APK_PATH: build/app/outputs/flutter-apk/AISuperAgent.apk
+          APK_PATH: flutter_app/build/app/outputs/flutter-apk/AISuperAgent.apk
           TAG_BASE: flutter-apk
-          RELEASE_NAME: AI Super Agent APK - Claude Opus, GPT-4o, Groq, Gemini, Multi-Agent
+          RELEASE_NAME: AI Super Agent APK - Claude Opus GPT-4o Groq Gemini Multi-Agent
