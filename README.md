@@ -126,3 +126,9 @@ Every tool is implemented as a callable function.
 
 ---
 Built with Flutter + Supabase + OpenAI
+
+--- LIVE DEPLOYMENT ---
+Repo: https://github.com/Mahicouragw/ai-super-agent
+Supabase Project: https://bwjoqomechsubjvwwbbk.supabase.co (Mumbai ap-south-1)
+Project Ref: bwjoqomechsubjvwwbbk
+APK: Check Actions tab for app-release.apk artifact
