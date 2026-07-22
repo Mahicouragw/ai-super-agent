@@ -43,6 +43,20 @@ jobs:
         working-directory: flutter_app
         run: flutter create --platforms=android .
 
+      - name: Fix compileSdk to 36 for file_picker + all skills
+        working-directory: flutter_app
+        run: |
+          # Patch android/app/build.gradle compileSdk 34 -> 36
+          sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle || true
+          sed -i 's/compileSdk 34/compileSdk 36/g' android/app/build.gradle || true
+          # Also patch local.properties and build.gradle if needed
+          sed -i 's/compileSdk 34/compileSdk 36/g' android/local.properties 2>/dev/null || true
+          cat android/app/build.gradle | grep -A2 -B2 compileSdk
+          # Ensure assets folder exists (fix: unable to find directory entry assets/)
+          mkdir -p assets
+          touch assets/.gitkeep
+          ls -la assets/
+
       - name: Add internet and mic permissions
         run: |
           MANIFEST=flutter_app/android/app/src/main/AndroidManifest.xml
@@ -50,9 +64,8 @@ jobs:
             sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
             echo "Permissions added"
           fi
-          cat "$MANIFEST" | grep permission
 
-      - name: Build debug APK with all skills
+      - name: Build debug APK with all skills Claude Opus GPT-4o Groq Gemini Multi-Agent
         working-directory: flutter_app
         run: flutter build apk --debug
 
@@ -73,4 +86,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APK_PATH: flutter_app/build/app/outputs/flutter-apk/AISuperAgent.apk
           TAG_BASE: flutter-apk
-          RELEASE_NAME: AI Super Agent APK - Claude Opus GPT-4o Groq Gemini Multi-Agent
+          RELEASE_NAME: AI Super Agent APK - Claude Opus GPT-4o Groq Gemini Multi-Agent All Skills
