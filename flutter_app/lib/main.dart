@@ -7,6 +7,7 @@ import 'screens/auth/otp_verification_screen.dart';
 import 'screens/home/dashboard_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/model_selector_screen.dart';
+import 'screens/arena_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,7 +21,7 @@ class AISuperAgentApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AI Super Agent',
+      title: 'AI Super Agent - LMArena Style',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -32,9 +33,10 @@ class AISuperAgentApp extends StatelessWidget {
         '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
         '/verify-otp': (context) => const OtpVerificationScreen(),
-        '/home': (context) => const DashboardScreen(), // New dashboard with prompt box + model chooser
+        '/home': (context) => const DashboardScreen(),
         '/old-home': (context) => const HomeScreen(),
         '/models': (context) => const ModelSelectorScreen(),
+        '/arena': (context) => const ArenaScreen(),
       },
     );
   }
@@ -51,7 +53,6 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    // Listen to auth changes for auto-login after OTP verification
     try {
       SupabaseConfig.client.auth.onAuthStateChange.listen((data) {
         if (mounted) setState(() {});
@@ -64,14 +65,11 @@ class _AuthGateState extends State<AuthGate> {
     try {
       final session = SupabaseConfig.client.auth.currentSession;
       if (session != null) {
-        // After OTP verification, user is auto-confirmed and goes directly to dashboard
-        // No more "Supabase stored" messages - just dashboard with prompt box
         return const DashboardScreen();
       }
     } catch (e) {
       print('AuthGate offline: $e');
     }
-    // If no session, show login (just email + password)
     return const LoginScreen();
   }
 }

@@ -217,7 +217,12 @@ Saved to generations. Ready to sing or generate song from these lyrics!
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            tooltip: 'Choose Model: Claude, GPT, Groq, Gemini',
+            tooltip: 'LMArena - How it works',
+            icon: const Icon(Icons.compare),
+            onPressed: () => Navigator.pushNamed(context, '/arena'),
+          ),
+          IconButton(
+            tooltip: 'Choose Model: GPT-4o, Groq Grow, Mixtral Installed Group, Gemini',
             icon: const Icon(Icons.model_training),
             onPressed: () async {
               final selected = await Navigator.push(context, MaterialPageRoute(builder: (_) => const ModelSelectorScreen()));
