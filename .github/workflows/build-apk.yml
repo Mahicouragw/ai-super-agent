@@ -43,16 +43,22 @@ jobs:
         working-directory: flutter_app
         run: flutter create --platforms=android .
 
-      - name: Fix compileSdk to 36 for file_picker + all skills
+      - name: Fix compileSdk to 36 and ensure assets
         working-directory: flutter_app
         run: |
-          # Patch android/app/build.gradle compileSdk 34 -> 36
-          sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle || true
-          sed -i 's/compileSdk 34/compileSdk 36/g' android/app/build.gradle || true
-          # Also patch local.properties and build.gradle if needed
-          sed -i 's/compileSdk 34/compileSdk 36/g' android/local.properties 2>/dev/null || true
-          cat android/app/build.gradle | grep -A2 -B2 compileSdk
-          # Ensure assets folder exists (fix: unable to find directory entry assets/)
+          echo "Patching compileSdk..."
+          # Flutter 3.44+ uses build.gradle.kts with compileSdk = 36 or flutter.compileSdkVersion
+          find android -name "*.gradle" -o -name "*.gradle.kts" | xargs ls -lh
+          # Replace compileSdk 34 -> 36 in both .gradle and .gradle.kts
+          sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/compileSdk 34/compileSdk 36/g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/compileSdk = 34/compileSdk = 36/g' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's/compileSdkVersion = 34/compileSdkVersion = 36/g' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle.kts 2>/dev/null || true
+          # Also patch if it uses flutter.compileSdkVersion, force to 36 by editing file
+          grep -n "compileSdk" android/app/build.gradle.kts || true
+          cat android/app/build.gradle.kts | head -60
+          # Ensure assets folder exists
           mkdir -p assets
           touch assets/.gitkeep
           ls -la assets/
@@ -62,12 +68,12 @@ jobs:
           MANIFEST=flutter_app/android/app/src/main/AndroidManifest.xml
           if ! grep -q "RECORD_AUDIO" "$MANIFEST"; then
             sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
-            echo "Permissions added"
           fi
+          cat "$MANIFEST" | grep permission
 
-      - name: Build debug APK with all skills Claude Opus GPT-4o Groq Gemini Multi-Agent
+      - name: Build debug APK with all skills
         working-directory: flutter_app
-        run: flutter build apk --debug
+        run: flutter build apk --debug --verbose
 
       - name: Rename APK
         working-directory: flutter_app
