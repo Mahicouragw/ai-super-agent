@@ -3,361 +3,276 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../config/supabase_config.dart';
 import 'supabase_service.dart';
-import '../utils/pdf_search.dart';
-import '../utils/news_service.dart';
 
 class AIAgentService {
-  // System prompt - replicates all skills of Arena AI Agent
+  // Clean system prompt - no internal details exposed
   static const String systemPrompt = '''
-You are AI Super Agent, a helpful agentic assistant built with Flutter + Supabase, running on user's tablet/computer.
+You are AI Super Agent, a helpful AI assistant like ChatGPT and Gemini.
 
-You have ALL these skills (like Arena AI):
-1. **PDF Search**: User can upload PDFs. You can extract text, search semantically, answer Q&A. Use tool search_pdfs.
-2. **Top 5 News**: Provide top 5 daily news with summaries, sources, category. Use get_top_news.
-3. **App Building**: Generate full Flutter apps, widgets, screens, features. You build incrementally, create files, explain architecture. Use build_app.
-4. **Report Series**: Create professional reports - financial, research, analysis, weekly/monthly series with tables, charts, summaries. Use create_report.
-5. **Web Search**: Search live web for current info with citations.
-6. **Fetch Webpage**: Fetch and summarize any URL.
-7. **File Management**: Create, read, manage project files - pubspec, dart files, html, md.
-8. **Image Generation**: Describe images to generate, search images.
-9. **Code Execution**: Write code, explain, debug.
-10. **Workspace Memory**: Remember chat history, documents, reports via Supabase.
+You can chat naturally, answer questions, write content, generate ideas, help with coding, explain things simply.
 
-Behavior:
-- Be thorough, agentic - do work, don't just describe.
-- When asked to build something, create complete runnable code.
-- When asked for reports, produce structured markdown/json to save.
-- Always cite sources when using web/news.
-- Store important outputs in Supabase via tools.
-- If user asks "do all work I tell you", confirm and execute.
+Available capabilities (use naturally, don't list unless asked):
+- Chat, Q&A, explanations
+- Writing: stories, lyrics, songs, blogs, content
+- Coding: Flutter apps, debugging, code generation
+- Creative: images (provide detailed prompts), videos (scripts), songs (lyrics + melody description)
+- Information: search, news, reports
+- Files: PDFs, documents
 
-You are installed as APK, so work offline when possible, use Supabase edge function when online.
+Be friendly, concise, helpful like ChatGPT. Don't mention system internals, API keys, models, tokens, providers, Supabase, or infrastructure. Just be a great assistant.
 ''';
 
   final SupabaseService _supabaseService = SupabaseService();
-  final PdfSearchUtil _pdfUtil = PdfSearchUtil();
-  final NewsService _newsService = NewsService();
 
-  // Main chat method with tool calling - now supports OpenRouter sk-or-v1- first
+  // Main chat - clean ChatGPT-like behavior
   Future<String> chat(String userMessage, {List<Map<String, dynamic>>? history}) async {
-    await _supabaseService.saveChatMessage(role: 'user', content: userMessage);
-
-    // Try OpenRouter / OpenAI directly first (using key from .env)
+    // Save user message (try, don't fail if offline)
     try {
-      final orResult = await _callOpenRouter(userMessage, history);
-      if (orResult != null && orResult.trim().isNotEmpty) {
-        await _supabaseService.saveChatMessage(role: 'assistant', content: orResult);
-        return orResult;
-      }
-    } catch (e) {
-      print('OpenRouter failed, trying Edge Function: $e');
-    }
+      await _supabaseService.saveChatMessage(role: 'user', content: userMessage);
+    } catch (_) {}
 
-    // Try Edge Function (which also now supports OpenRouter via Supabase secrets)
+    // 1. Try Edge Function (primary, handles all models via OpenRouter - Claude Opus, GPT-4o, Groq, Gemini)
     try {
       final edgeResult = await _callEdgeFunction(userMessage, history);
       if (edgeResult != null && edgeResult.trim().isNotEmpty) {
-        await _supabaseService.saveChatMessage(role: 'assistant', content: edgeResult);
+        try {
+          await _supabaseService.saveChatMessage(role: 'assistant', content: edgeResult);
+        } catch (_) {}
         return edgeResult;
       }
     } catch (e) {
-      print('Edge function failed, fallback to local: $e');
+      print('Edge function trying fallback: $e');
     }
 
-    // Local fallback with tool routing
-    final lower = userMessage.toLowerCase();
-
-    if (lower.contains('pdf') || lower.contains('document') || lower.contains('search in file')) {
-      return await _handlePdfSearch(userMessage);
-    }
-    if (lower.contains('top 5 news') || lower.contains('top five news') || lower.contains('today news') || lower.contains('news to me')) {
-      return await _handleNews();
-    }
-    if (lower.contains('build app') || lower.contains('create app') || lower.contains('flutter') || lower.contains('make an app')) {
-      return await _handleAppBuilder(userMessage);
-    }
-    if (lower.contains('report')) {
-      return await _handleReport(userMessage);
-    }
-    if (lower.contains('search web') || lower.contains('look up') || lower.contains('latest')) {
-      return await _handleWebSearch(userMessage);
-    }
-
-    // Generic assistant response
-    final response = await _generateGenericResponse(userMessage, history);
-    await _supabaseService.saveChatMessage(role: 'assistant', content: response);
-    return response;
-  }
-
-  // NEW: OpenRouter support - uses sk-or-v1- key for GPT-4o, Claude, Gemini via one API
-  Future<String?> _callOpenRouter(String message, List<Map<String, dynamic>>? history) async {
-    final apiKey = dotenv.env['OPENROUTER_API_KEY'] ?? dotenv.env['OPENAI_API_KEY'] ?? '';
-    if (apiKey.isEmpty) return null;
-    
-    final isOpenRouter = apiKey.startsWith('sk-or-v1-');
-    final baseUrl = isOpenRouter 
-        ? 'https://openrouter.ai/api/v1/chat/completions'
-        : 'https://api.openai.com/v1/chat/completions';
-    
-    // Default model: for OpenRouter use openai/gpt-4o-mini or anthropic/claude-3.5-sonnet, for OpenAI use gpt-4o-mini
-    final model = isOpenRouter 
-        ? (dotenv.env['OPENROUTER_MODEL'] ?? 'openai/gpt-4o-mini')
-        : 'gpt-4o-mini';
-
+    // 2. Try direct OpenRouter from app (if key in .env)
     try {
-      List<Map<String, String>> messages = [
-        {'role': 'system', 'content': systemPrompt},
-      ];
-      if (history != null) {
-        // last 8 messages
-        final recent = history.length > 8 ? history.sublist(history.length - 8) : history;
-        for (var h in recent) {
-          messages.add({'role': h['role'] as String, 'content': h['content'] as String});
-        }
+      final orResult = await _callOpenRouterDirect(userMessage, history);
+      if (orResult != null && orResult.trim().isNotEmpty) {
+        try {
+          await _supabaseService.saveChatMessage(role: 'assistant', content: orResult);
+        } catch (_) {}
+        return orResult;
       }
-      messages.add({'role': 'user', 'content': message});
+    } catch (_) {}
 
-      final res = await http.post(
-        Uri.parse(baseUrl),
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-          'Content-Type': 'application/json',
-          if (isOpenRouter) 'HTTP-Referer': 'https://github.com/Mahicouragw/ai-super-agent',
-          if (isOpenRouter) 'X-Title': 'AI Super Agent',
-        },
-        body: jsonEncode({
-          'model': model,
-          'messages': messages,
-          'temperature': 0.7,
-          'max_tokens': 2000,
-        }),
-      );
-
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        final content = data['choices']?[0]?['message']?['content'];
-        if (content != null) return content as String;
-      } else {
-        print('OpenRouter/OpenAI call failed ${res.statusCode}: ${res.body.substring(0, 500)}');
-      }
-    } catch (e) {
-      print('OpenRouter call error: $e');
-    }
-    return null;
+    // 3. Clean fallback - ChatGPT style, no secrets
+    return _cleanChatFallback(userMessage);
   }
 
+  // Call Edge Function - clean, handles token limits internally
   Future<String?> _callEdgeFunction(String message, List<Map<String, dynamic>>? history) async {
     final url = dotenv.env['SUPABASE_URL'];
     final anonKey = dotenv.env['SUPABASE_ANON_KEY'];
     if (url == null || anonKey == null) return null;
 
-    final res = await http.post(
-      Uri.parse('$url/functions/v1/ai-agent'),
-      headers: {
-        'Authorization': 'Bearer $anonKey',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'message': message,
-        'history': history ?? [],
-        'system_prompt': systemPrompt,
-      }),
-    );
+    try {
+      // Trim history to avoid token limits - only last 4 messages, each max 1500 chars
+      final trimmedHistory = (history ?? []).length > 4 
+          ? history!.sublist(history.length - 4) 
+          : history ?? [];
+      final cleanedHistory = trimmedHistory.map((h) {
+        final content = (h['content'] ?? '').toString();
+        return {
+          'role': h['role'],
+          'content': content.length > 1500 ? content.substring(0, 1500) : content,
+        };
+      }).toList();
 
-    if (res.statusCode == 200) {
-      final data = jsonDecode(res.body);
-      return data['reply'] as String?;
+      final res = await http.post(
+        Uri.parse('$url/functions/v1/ai-agent'),
+        headers: {
+          'Authorization': 'Bearer $anonKey',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'message': message.substring(0, 3000), // Limit message to avoid token overflow
+          'history': cleanedHistory,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final reply = data['reply'] as String?;
+        if (reply != null && reply.trim().isNotEmpty) {
+          return reply;
+        }
+      }
+    } catch (e) {
+      print('Edge call error: $e');
     }
     return null;
   }
 
-  Future<String> _handlePdfSearch(String query) async {
-    final docs = await _supabaseService.searchDocuments(query);
-    if (docs.isEmpty) {
-      return '''
-📄 **PDF Search - No documents found yet**
+  // Direct OpenRouter call from app with token limit handling
+  Future<String?> _callOpenRouterDirect(String message, List<Map<String, dynamic>>? history) async {
+    final apiKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
+    if (apiKey.isEmpty) return null;
 
-To use PDF Search:
-1. Go to PDF Search screen
-2. Upload PDFs via file picker
-3. I extract text and store in Supabase (secure, RLS-protected)
-4. Then ask me e.g., "search PDFs for quarterly revenue"
-
-Your query: "$query" - no matches.
-
-Skills:
-- Syncfusion Flutter PDF text extraction
-- Search stored docs via ilike + future pgvector semantic
-- Q&A with citations to filename + page
-''';
-    }
-
-    final buf = StringBuffer();
-    buf.writeln('📄 **PDF Search Results for "$query":**\n');
-    for (var doc in docs) {
-      final snippet = _pdfUtil.getSnippet(doc['content_text'] as String, query);
-      buf.writeln('**File:** ${doc['filename']}');
-      buf.writeln(snippet);
-      buf.writeln('---\n');
-    }
-    final result = buf.toString();
-    await _supabaseService.saveChatMessage(role: 'assistant', content: result, toolName: 'search_pdfs');
-    return result;
-  }
-
-  Future<String> _handleNews() async {
+    final model = dotenv.env['OPENROUTER_MODEL'] ?? 'anthropic/claude-opus-4.5';
+    
     try {
-      final news = await _newsService.getTop5News();
-      final buf = StringBuffer();
-      buf.writeln('🗞️ **Top 5 News Today:**\n');
-      for (int i = 0; i < news.length; i++) {
-        final n = news[i];
-        buf.writeln('**${i + 1}. ${n['title']}**');
-        buf.writeln('${n['description']}');
-        buf.writeln('Source: ${n['source']} | ${n['url']}');
-        buf.writeln('');
+      // Trim to avoid 1400 token limit issues
+      final trimmedHistory = (history ?? []).length > 3 
+          ? history!.sublist(history.length - 3) 
+          : history ?? [];
+
+      List<Map<String, String>> messages = [
+        {'role': 'system', 'content': systemPrompt},
+      ];
+      for (var h in trimmedHistory) {
+        final content = (h['content'] ?? '').toString();
+        if (content.trim().isEmpty) continue;
+        messages.add({
+          'role': h['role'] == 'user' ? 'user' : 'assistant',
+          'content': content.length > 1000 ? content.substring(0, 1000) : content,
+        });
       }
-      final result = buf.toString();
-      await _supabaseService.saveChatMessage(role: 'assistant', content: result, toolName: 'get_top_news', toolResult: {'news': news});
-      return result;
+      messages.add({'role': 'user', 'content': message.length > 2000 ? message.substring(0, 2000) : message});
+
+      final res = await http.post(
+        Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://aisuperagent.app',
+          'X-Title': 'AI Super Agent',
+        },
+        body: jsonEncode({
+          'model': model,
+          'messages': messages,
+          'temperature': 0.7,
+          'max_tokens': 1500, // Keep under 1400 limit issue - use 1000-1500
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final content = data['choices']?[0]?['message']?['content'];
+        if (content != null && content.toString().trim().isNotEmpty) {
+          return content.toString();
+        }
+      } else {
+        // If token limit error, try with even smaller history
+        final body = res.body;
+        if (body.toLowerCase().contains('token') || body.toLowerCase().contains('context') || body.contains('1400')) {
+          print('Token limit hit, retrying with minimal history');
+          // Retry with no history
+          final retryRes = await http.post(
+            Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://aisuperagent.app',
+              'X-Title': 'AI Super Agent',
+            },
+            body: jsonEncode({
+              'model': model,
+              'messages': [
+                {'role': 'system', 'content': systemPrompt},
+                {'role': 'user', 'content': message.length > 1000 ? message.substring(0, 1000) : message},
+              ],
+              'temperature': 0.7,
+              'max_tokens': 800,
+            }),
+          );
+          if (retryRes.statusCode == 200) {
+            final data = jsonDecode(retryRes.body);
+            return data['choices']?[0]?['message']?['content'];
+          }
+        }
+      }
     } catch (e) {
-      return '⚠️ News fetch failed: $e\nMake sure NEWS_API_KEY is set in .env or Edge Function';
+      print('Direct OpenRouter error: $e');
     }
+    return null;
   }
 
-  Future<String> _handleAppBuilder(String prompt) async {
-    final code = '''
-🚀 **App Builder - Generated for: "$prompt"**
+  // Clean fallback - no secrets, no vulnerabilities, ChatGPT-like
+  String _cleanChatFallback(String prompt) {
+    final lower = prompt.toLowerCase();
+    
+    if (lower.contains('image') && (lower.contains('generate') || lower.contains('create') || lower.contains('make'))) {
+      return '''🎨 I'd love to help you create an image!
 
-I'll build incrementally like Arena AI does:
+**Your idea:** "$prompt"
 
-**Step 1: pubspec.yaml**
-```yaml
-dependencies:
-  flutter:
-    sdk: flutter
-  supabase_flutter: ^2.5
-```
+**Here's a detailed prompt you can use:**
 
-**Step 2: Main screen code**
-```dart
-// lib/screens/generated/${prompt.replaceAll(' ', '_').toLowerCase()}_screen.dart
-import 'package:flutter/material.dart';
+"$prompt, highly detailed, 4k resolution, professional lighting, vibrant colors, sharp focus, artistic composition, trending on artstation"
 
-class GeneratedAppScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('${prompt}')),
-      body: Center(child: Text('Built by AI Super Agent')),
-    );
-  }
-}
-```
+**Want me to refine it?** Tell me the style you like - realistic, cartoon, anime, 3D, watercolor, etc.
 
-**Step 3: Logic**
-- Created data models
-- Added Supabase integration
-- State management with Provider
+What image should we create next?''';
+    }
+    
+    if (lower.contains('video')) {
+      return '''🎬 Great idea for a video! Here's a script for: "$prompt"
 
-**Complete project ready at:** `flutter_app/lib/generated/`
+**Video Script:**
+- **Opening (0-3s):** Hook to grab attention
+- **Main (3-20s):** Core content with visuals
+- **Closing (20-30s):** Call to action
 
-Want me to create full APK build spec? Say "build full APK for this idea" and I'll produce all files.
+Want me to write the full script with dialogues and scene descriptions?
 
-This mirrors how I build apps: scaffold -> models -> services -> UI -> persistence -> build command.
-''';
-    await _supabaseService.saveChatMessage(role: 'assistant', content: code, toolName: 'build_app');
-    return code;
-  }
+What video do you want to create?''';
+    }
+    
+    if (lower.contains('song') || lower.contains('music')) {
+      return '''🎵 Let's create a song about: "$prompt"
 
-  Future<String> _handleReport(String prompt) async {
-    final report = {
-      'title': 'Report: $prompt',
-      'generated_at': DateTime.now().toIso8601String(),
-      'sections': [
-        {'heading': 'Executive Summary', 'content': 'Auto-generated report based on prompt: $prompt'},
-        {'heading': 'Analysis', 'content': 'Detailed breakdown... (replace with real data via tool use)'},
-        {'heading': 'Charts', 'content': 'Bar, line charts placeholder'},
-        {'heading': 'Recommendations', 'content': 'Next steps...'},
-      ]
-    };
+**Verse 1:**
+Walking through the memories...
 
-    await _supabaseService.saveReport(title: report['title'] as String, content: report, type: 'series');
+**Chorus:**
+This is our song, our story...
 
-    return '''
-📊 **Report Series Created**
-
-**Title:** ${report['title']}
-**Type:** Series (can be daily/weekly/monthly)
-**Saved to:** Supabase `reports` table (RLS protected, user-specific)
-
-**Structure:**
-# ${report['title']}
-
-## Executive Summary
-${(report['sections'] as List)[0]['content']}
-
-## Analysis
+**Verse 2:**
 ...
 
-## Export Options:
-- Markdown: share as .md
-- PDF: generate with pdf package
-- Excel: via Excel template
-- Supabase storage: linked
+Tell me the genre (pop, romantic, sad, energetic) and mood, and I'll write full lyrics with verses, chorus, bridge!
 
-Say "create weekly report series for X" and I'll auto-generate 4 weeks.
+What kind of song do you want?''';
+    }
+    
+    if (lower.contains('lyrics')) {
+      return '''📝 Here are lyrics for "$prompt":
 
-This is how I create report series: template -> data fetch (web/DB) -> markdown -> save -> export.
-''';
-  }
+**Verse 1**
+In the quiet of the night...
 
-  Future<String> _handleWebSearch(String prompt) async {
-    return '''
-🔍 **Web Search Skill Active**
+**Chorus**
+Oh, this feeling...
 
-Your query: "$prompt"
+**Verse 2**
+...
 
-In production, this calls Edge Function which uses:
-- Tavily / Brave Search API
-- Fetches live results
-- Summarizes with citations
+Want me to make it more romantic, sad, happy, or in a specific language like Telugu or Hindi?
 
-**Example result format:**
-[1](https://example.com) - Title - Snippet
-[2](https://example2.com) - Title
+Tell me the style you want!''';
+    }
 
-To enable:
-Set TAVILY_API_KEY in Supabase Edge Function secrets.
+    // Default friendly ChatGPT-like response
+    return '''Hi! I'm your AI Super Agent 🤖
 
-Currently showing mock because external API not configured.
-''';
-  }
+You said: "$prompt"
 
-  Future<String> _generateGenericResponse(String prompt, List<Map<String, dynamic>>? history) async {
-    // Simple template that covers all skills
-    return '''
-I'm your AI Super Agent, ready to do all work you tell me, just like Arena AI!
+I'm here to help you with anything! I can:
 
-**I understood:** "$prompt"
+- 💬 Chat and answer questions
+- 🎨 Generate images - just describe what you want
+- 🎬 Create video scripts
+- 🎵 Write songs and lyrics
+- 📄 Create content, stories, reports
+- 💻 Help with coding and building apps
+- 📰 Get news and information
 
-**I can do:**
-- 📄 Search PDFs: Upload PDFs then ask me anything inside them
-- 📰 Top 5 News: Say "give top five news to me"
-- 📱 Build Apps: Say "build a todo app with Supabase"
-- 📊 Report Series: Say "create report series for sales Q1"
-- 🌐 Web Search, Fetch Pages, File Management, Image Generation, Code Building...
+What would you like me to do? Just tell me - for example:
+- "Generate an image of a futuristic city"
+- "Write a love song about Pune"
+- "Create a video script for my study app"
+- "Build a todo app"
 
-**Next Steps:**
-Tell me specifically what you want now, e.g.:
-- "Search PDFs for ..."
-- "Top 5 news today"
-- "Build an expense tracker APK"
-- "Create weekly report template"
-
-All data is stored safely in Supabase with RLS, your profile has unique username & email check, and verification email is required.
-
-What should I build first?
-''';
+I'm listening! 👇''';
   }
 }
