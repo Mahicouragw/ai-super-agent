@@ -198,14 +198,12 @@ class SupabaseService {
   }
 
   Future<List<Map<String, dynamic>>> getGenerations({String? type}) async {
-    final userId = currentUser?.id;
     try {
-      var query = _client.from('generations').select().order('created_at', ascending: false).limit(50);
-      if (userId != null) {
-        // query = query.eq('user_id', userId); // allow all for demo
-      }
+      dynamic query;
       if (type != null) {
-        query = query.eq('type', type);
+        query = _client.from('generations').select().eq('type', type).order('created_at', ascending: false).limit(50);
+      } else {
+        query = _client.from('generations').select().order('created_at', ascending: false).limit(50);
       }
       final res = await query;
       return List<Map<String, dynamic>>.from(res);
