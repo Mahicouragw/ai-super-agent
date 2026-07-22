@@ -141,3 +141,63 @@ create trigger check_duplicate_profile
 
 -- For pg_trgm search
 create extension if not exists pg_trgm;
+
+-- Reminders table - daily news, newspaper, tasks every day
+create table if not exists public.reminders (
+  id uuid default uuid_generate_v4() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  title text not null,
+  description text,
+  remind_at timestamp with time zone not null,
+  repeat text default 'once' check (repeat in ('once','daily','weekly','monthly')),
+  is_active boolean default true,
+  created_at timestamp with time zone default now()
+);
+
+-- Study progress for Inter AI Study Buddy (reuse same Supabase project for both apps - free limit 2 projects)
+create table if not exists public.study_progress (
+  id uuid default uuid_generate_v4() primary key,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  subject_id text not null,
+  best_score int default 0,
+  learned_qas text[] default '{}',
+  bookmarked_qas text[] default '{}',
+  learned_words text[] default '{}',
+  study_streak int default 0,
+  last_study_day text default '',
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  unique(user_id, subject_id)
+);
+
+-- Enable RLS for new tables
+alter table public.reminders enable row level security;
+alter table public.study_progress enable row level security;
+
+drop policy if exists "Users manage own reminders" on public.reminders;
+drop policy if exists "Users manage own study_progress" on public.study_progress;
+
+create policy "Users manage own reminders" on public.reminders for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users manage own study_progress" on public.study_progress for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Index for reminders
+create index if not exists reminders_user_id_idx on public.reminders (user_id);
+create index if not exists reminders_remind_at_idx on public.reminders (remind_at);
+
+-- Update trigger to ensure updated_at
+create or replace function public.update_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists update_profiles_updated_at on public.profiles;
+create trigger update_profiles_updated_at before update on public.profiles for each row execute procedure public.update_updated_at();
+
+drop trigger if exists update_study_progress_updated_at on public.study_progress;
+create trigger update_study_progress_updated_at before update on public.study_progress for each row execute procedure public.update_updated_at();
+
