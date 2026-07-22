@@ -38,14 +38,25 @@ You are installed as APK, so work offline when possible, use Supabase edge funct
   final PdfSearchUtil _pdfUtil = PdfSearchUtil();
   final NewsService _newsService = NewsService();
 
-  // Main chat method with tool calling
+  // Main chat method with tool calling - now supports OpenRouter sk-or-v1- first
   Future<String> chat(String userMessage, {List<Map<String, dynamic>>? history}) async {
     await _supabaseService.saveChatMessage(role: 'user', content: userMessage);
 
-    // Try Edge Function first (secure)
+    // Try OpenRouter / OpenAI directly first (using key from .env)
+    try {
+      final orResult = await _callOpenRouter(userMessage, history);
+      if (orResult != null && orResult.trim().isNotEmpty) {
+        await _supabaseService.saveChatMessage(role: 'assistant', content: orResult);
+        return orResult;
+      }
+    } catch (e) {
+      print('OpenRouter failed, trying Edge Function: $e');
+    }
+
+    // Try Edge Function (which also now supports OpenRouter via Supabase secrets)
     try {
       final edgeResult = await _callEdgeFunction(userMessage, history);
-      if (edgeResult != null) {
+      if (edgeResult != null && edgeResult.trim().isNotEmpty) {
         await _supabaseService.saveChatMessage(role: 'assistant', content: edgeResult);
         return edgeResult;
       }
@@ -76,6 +87,63 @@ You are installed as APK, so work offline when possible, use Supabase edge funct
     final response = await _generateGenericResponse(userMessage, history);
     await _supabaseService.saveChatMessage(role: 'assistant', content: response);
     return response;
+  }
+
+  // NEW: OpenRouter support - uses sk-or-v1- key for GPT-4o, Claude, Gemini via one API
+  Future<String?> _callOpenRouter(String message, List<Map<String, dynamic>>? history) async {
+    final apiKey = dotenv.env['OPENROUTER_API_KEY'] ?? dotenv.env['OPENAI_API_KEY'] ?? '';
+    if (apiKey.isEmpty) return null;
+    
+    final isOpenRouter = apiKey.startsWith('sk-or-v1-');
+    final baseUrl = isOpenRouter 
+        ? 'https://openrouter.ai/api/v1/chat/completions'
+        : 'https://api.openai.com/v1/chat/completions';
+    
+    // Default model: for OpenRouter use openai/gpt-4o-mini or anthropic/claude-3.5-sonnet, for OpenAI use gpt-4o-mini
+    final model = isOpenRouter 
+        ? (dotenv.env['OPENROUTER_MODEL'] ?? 'openai/gpt-4o-mini')
+        : 'gpt-4o-mini';
+
+    try {
+      List<Map<String, String>> messages = [
+        {'role': 'system', 'content': systemPrompt},
+      ];
+      if (history != null) {
+        // last 8 messages
+        final recent = history.length > 8 ? history.sublist(history.length - 8) : history;
+        for (var h in recent) {
+          messages.add({'role': h['role'] as String, 'content': h['content'] as String});
+        }
+      }
+      messages.add({'role': 'user', 'content': message});
+
+      final res = await http.post(
+        Uri.parse(baseUrl),
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'Content-Type': 'application/json',
+          if (isOpenRouter) 'HTTP-Referer': 'https://github.com/Mahicouragw/ai-super-agent',
+          if (isOpenRouter) 'X-Title': 'AI Super Agent',
+        },
+        body: jsonEncode({
+          'model': model,
+          'messages': messages,
+          'temperature': 0.7,
+          'max_tokens': 2000,
+        }),
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final content = data['choices']?[0]?['message']?['content'];
+        if (content != null) return content as String;
+      } else {
+        print('OpenRouter/OpenAI call failed ${res.statusCode}: ${res.body.substring(0, 500)}');
+      }
+    } catch (e) {
+      print('OpenRouter call error: $e');
+    }
+    return null;
   }
 
   Future<String?> _callEdgeFunction(String message, List<Map<String, dynamic>>? history) async {
