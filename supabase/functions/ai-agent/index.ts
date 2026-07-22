@@ -9,7 +9,7 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || ""
 const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY") || ""
 const TAVILY_API_KEY = Deno.env.get("TAVILY_API_KEY") || ""
 const NEWS_API_KEY = Deno.env.get("NEWS_API_KEY") || ""
-const OPENROUTER_MODEL = Deno.env.get("OPENROUTER_MODEL") || "openai/gpt-4o-mini"
+const OPENROUTER_MODEL = Deno.env.get("OPENROUTER_MODEL") || "anthropic/claude-opus-4.5"
 const AI_PROVIDER = Deno.env.get("AI_PROVIDER") || (OPENROUTER_API_KEY ? "openrouter" : GEMINI_API_KEY ? "gemini" : OPENAI_API_KEY ? "openai" : "fallback")
 
 const SYSTEM_PROMPT = `
@@ -228,7 +228,7 @@ function generateFallback(message: string): string {
   if (lower.includes("top 5 news") || lower.includes("top five")) {
     return `🗞️ **Top 5 News (Fallback - set OPENROUTER_API_KEY in secrets)**
 
-Run: supabase secrets set OPENROUTER_API_KEY=sk-or-v1-... OPENROUTER_MODEL=openai/gpt-4o-mini
+Run: supabase secrets set OPENROUTER_API_KEY=sk-or-v1-... OPENROUTER_MODEL=anthropic/claude-opus-4.5
 
 Mock Top 5:
 1. AI Super Agent Launched - Flutter APK with PDF search, news, app builder, reports - now powered by OpenRouter

@@ -47,17 +47,17 @@ class SubAgentTask {
 
 class MultiAgentService {
   final String _openRouterKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
-  final String _model = dotenv.env['OPENROUTER_MODEL'] ?? 'anthropic/claude-3-opus';
+  final String _model = dotenv.env['OPENROUTER_MODEL'] ?? 'anthropic/claude-opus-4.5';
 
   // Claude Opus and Claude Sonnet are best for multi-agent reasoning
-  // OpenRouter models: anthropic/claude-3-opus, anthropic/claude-3-5-sonnet, openai/gpt-4o, google/gemini-2.0-flash-001
+  // OpenRouter models: anthropic/claude-opus-4.5, anthropic/claude-3-5-sonnet, openai/gpt-4o, google/gemini-2.0-flash-001
   String get _effectiveModel {
     // If user wants Claude Opus or CloudSonic (Sonnet), use Opus as default per request
     if (_model.contains('opus') || _model.contains('sonnet') || _model.contains('claude')) {
       return _model;
     }
     // Default to Claude Opus as requested
-    return 'anthropic/claude-3-opus';
+    return 'anthropic/claude-opus-4.5';
   }
 
   /// Coordinator decides which agents to delegate to based on user intent
@@ -190,7 +190,7 @@ User asked: "$original"
         'X-Title': 'AI Super Agent Multi-Agent (${role.name})',
       },
       body: jsonEncode({
-        'model': _effectiveModel, // anthropic/claude-3-opus or claude-3-5-sonnet
+        'model': _effectiveModel, // anthropic/claude-opus-4.5 or claude-3-5-sonnet
         'messages': [
           {'role': 'system', 'content': 'You are ${role.name} sub-agent of AI Super Agent. You work with other agents (B=coder, C=researcher, D=analyst, E=scheduler). Be concise, produce actionable output.'},
           {'role': 'user', 'content': prompt},

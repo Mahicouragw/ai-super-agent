@@ -83,7 +83,7 @@ class WebSearchService {
           'X-Title': 'AI Super Agent Web Search',
         },
         body: jsonEncode({
-          'model': dotenv.env['OPENROUTER_MODEL'] ?? 'anthropic/claude-3-opus',
+          'model': dotenv.env['OPENROUTER_MODEL'] ?? 'anthropic/claude-opus-4.5',
           'messages': [
             {'role': 'system', 'content': 'You are researcher agent, expert at summarizing web content with citations. Task: $task'},
             {'role': 'user', 'content': content},
