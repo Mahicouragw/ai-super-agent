@@ -175,7 +175,7 @@ class _ModelSelectorScreenState extends State<ModelSelectorScreen> {
                 const SizedBox(height: 6),
                 Text('Current: $_selectedModel', style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
                 const SizedBox(height: 6),
-                const Text('✅ All models with :free suffix are expensive quality but free forever via OpenRouter: 20 RPM, 50 req/day free, 1000 req/day after \10 USD credits once (persists even if balance zero). No credit card needed. No duplicates, real, works locally safely, no errors.', style: TextStyle(fontSize: 11)),
+                const Text('✅ All models with :free suffix are expensive quality but free forever via OpenRouter: 20 RPM, 50 req/day free, 1000 req/day after 10 USD credits once (persists even if balance zero). No credit card needed. No duplicates, real, works locally safely, no errors.', style: TextStyle(fontSize: 11)),
                 const SizedBox(height: 6),
                 const Text('How real agent works like computers: Thinking → Analyzing → Planning → Executing → Responding. Shows steps like LMArena. Multi-agent delegation to Coder, Researcher, Analyst, Scheduler working in parallel.', style: TextStyle(fontSize: 10, color: Colors.grey)),
               ]),
