@@ -88,6 +88,9 @@ jobs:
             echo "⚠️ Generated NEW keystore - This should only happen once ever! Save base64 of this keystore as secret ANDROID_KEYSTORE_BASE64 for future builds"
           fi
           
+          # Ensure android folder exists (will be created by flutter create, but create now for safety)
+          mkdir -p android/app
+          
           # Create key.properties for release signing
           cat > android/key.properties << EOF
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
