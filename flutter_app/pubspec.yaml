@@ -1,5 +1,5 @@
 name: ai_super_agent
-description: AI Super Agent with Supabase Auth, PDF Search, News, App Builder, Reports - APK Ready - Claude Opus, GPT-4o, Groq, Gemini via OpenRouter - All Skills
+description: AI Super Agent with Supabase Auth, PDF Search, News, App Builder, Reports - APK Ready - Real Expensive Free Forever Models, No Duplicates, Works Offline Safely
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -26,6 +26,8 @@ dependencies:
   google_fonts: ^6.1.0
   lottie: ^3.1.2
   shimmer: ^3.0.0
+  speech_to_text: ^7.0.0
+  record: ^6.1.0
 
 dev_dependencies:
   flutter_test:

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../services/ai_agent_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/wispr_flow_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -14,12 +15,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _promptController = TextEditingController();
   final _agentService = AIAgentService();
   final _supabaseService = SupabaseService();
+  final _wisprService = WisprFlowService();
   final _scrollController = ScrollController();
 
   List<Map<String, String>> _messages = [];
   bool _loading = false;
   String _selectedModel = 'qwen/qwen3-coder:free';
   List<String> _thinkingSteps = [];
+  bool _isRecording = false;
+  String _transcriptionLanguage = 'auto';
+  int _recordingSeconds = 0;
 
   @override
   void initState() {
@@ -109,12 +114,66 @@ What to build?'''}
     setState(() => _thinkingSteps.add('$title $detail'));
   }
 
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      // Stop recording
+      final finalText = await _wisprService.stopRecording();
+      setState(() {
+        _isRecording = false;
+        _recordingSeconds = 0;
+      });
+      if (finalText.trim().isNotEmpty) {
+        _promptController.text = finalText;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('🎤 Transcribed ${finalText.length} chars in ${_transcriptionLanguage} - Ready to send to AI'), backgroundColor: Colors.green),
+        );
+      }
+    } else {
+      // Start recording - like Wispr Flow, any language, 5-10 min limit
+      final initialized = await _wisprService.initialize();
+      if (!initialized) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Microphone permission needed for Wispr Flow transcription')));
+        return;
+      }
+
+      setState(() => _isRecording = true);
+
+      await _wisprService.startRecording(
+        language: _transcriptionLanguage == 'te' ? TranscriptionLanguage.telugu : 
+                  _transcriptionLanguage == 'hi' ? TranscriptionLanguage.hindi :
+                  _transcriptionLanguage == 'auto' ? TranscriptionLanguage.auto : TranscriptionLanguage.english,
+        maxMinutes: 5, // 5 or 10 minutes per session as requested
+        onTranscriptionUpdate: (text) {
+          setState(() {
+            _promptController.text = text;
+          });
+        },
+        onFinalTranscription: (text) {
+          setState(() {
+            _promptController.text = text;
+          });
+        },
+        onProgress: (elapsed, max) {
+          setState(() => _recordingSeconds = elapsed);
+        },
+      );
+    }
+  }
+
   void _scrollToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(_scrollController.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _wisprService.dispose();
+    _promptController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -170,11 +229,41 @@ What to build?'''}
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(child: TextField(controller: _promptController, minLines: 1, maxLines: 5, decoration: InputDecoration(hintText: 'Send prompt - build apps, generate images/videos/songs/lyrics/content, ask anything...', border: OutlineInputBorder(borderRadius: BorderRadius.circular(24))), onSubmitted: (_) => _send())),
-                const SizedBox(width: 8),
-                IconButton.filled(onPressed: _loading ? null : _send, icon: const Icon(Icons.send)),
+                // Language chooser for transcription - English, Telugu, Hindi, any language
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      const Text('🎤 Wispr Flow Transcription:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 6),
+                      ChoiceChip(label: const Text('Auto Any Lang', style: TextStyle(fontSize: 10)), selected: _transcriptionLanguage == 'auto', onSelected: (_) => setState(() => _transcriptionLanguage = 'auto')),
+                      const SizedBox(width: 4),
+                      ChoiceChip(label: const Text('English', style: TextStyle(fontSize: 10)), selected: _transcriptionLanguage == 'en', onSelected: (_) => setState(() => _transcriptionLanguage = 'en')),
+                      const SizedBox(width: 4),
+                      ChoiceChip(label: const Text('Telugu', style: TextStyle(fontSize: 10)), selected: _transcriptionLanguage == 'te', onSelected: (_) => setState(() => _transcriptionLanguage = 'te')),
+                      const SizedBox(width: 4),
+                      ChoiceChip(label: const Text('Hindi', style: TextStyle(fontSize: 10)), selected: _transcriptionLanguage == 'hi', onSelected: (_) => setState(() => _transcriptionLanguage = 'hi')),
+                      const SizedBox(width: 4),
+                      if (_isRecording) Text('⏱️ ${_recordingSeconds ~/ 60}:${(_recordingSeconds % 60).toString().padLeft(2, '0')}/5:00', style: const TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    // Mic button - Wispr Flow style - 5-10 min limit per session
+                    IconButton(
+                      icon: Icon(_isRecording ? Icons.stop_circle : Icons.mic, color: _isRecording ? Colors.red : Colors.deepPurple),
+                      tooltip: _isRecording ? 'Stop recording (5-10 min limit)' : 'Record voice in any language - Wispr Flow transcription',
+                      onPressed: _toggleRecording,
+                    ),
+                    Expanded(child: TextField(controller: _promptController, minLines: 1, maxLines: 5, decoration: InputDecoration(hintText: _isRecording ? '🎤 Listening in ${_transcriptionLanguage == 'auto' ? 'any language' : _transcriptionLanguage}... Speak English/Telugu/Hindi any language (5-10 min)' : 'Send prompt - build apps, generate images/videos/songs/lyrics/content, ask anything...', border: OutlineInputBorder(borderRadius: BorderRadius.circular(24))), onSubmitted: (_) => _send())),
+                    const SizedBox(width: 8),
+                    IconButton.filled(onPressed: _loading ? null : _send, icon: const Icon(Icons.send)),
+                  ],
+                ),
               ],
             ),
           ),

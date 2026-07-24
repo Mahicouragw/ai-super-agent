@@ -8,6 +8,7 @@ import 'screens/home/dashboard_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/model_selector_screen.dart';
 import 'screens/arena_screen.dart';
+import 'screens/terms_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +38,8 @@ class AISuperAgentApp extends StatelessWidget {
         '/old-home': (context) => const HomeScreen(),
         '/models': (context) => const ModelSelectorScreen(),
         '/arena': (context) => const ArenaScreen(),
+        '/terms': (context) => const TermsScreen(),
+        '/privacy': (context) => const PrivacyScreen(),
       },
     );
   }
