@@ -26,35 +26,6 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate Release Keystore (Same for all builds to allow updates)
-        working-directory: flutter_app
-        run: |
-          # Generate keystore if not exists, with fixed password for consistent updates
-          # This ensures all APKs can update without "package conflicts" error
-          # In production, store this keystore as GitHub Secret ANDROID_KEYSTORE_BASE64 for security
-          if [ ! -f "ai-super-agent-release.keystore" ]; then
-            keytool -genkey -v -keystore ai-super-agent-release.keystore -keyalg RSA -keysize 2048 -validity 10000 -storepass AiSuperAgent2026! -keypass AiSuperAgent2026! -alias aisuperagent -dname "CN=Mahicouragw, OU=AI Super Agent, O=AI Super Agent, L=Pune, ST=Maharashtra, C=IN"
-            echo "Generated new release keystore for update-friendly installs"
-          fi
-          ls -lh *.keystore || true
-          # Create key.properties
-          cat > android/key.properties << 'EOF'
-          storePassword=AiSuperAgent2026!
-          keyPassword=AiSuperAgent2026!
-          keyAlias=aisuperagent
-          storeFile=../ai-super-agent-release.keystore
-          EOF
-          cat android/key.properties
-          # Update android/app/build.gradle to use release signing config if not already
-          if ! grep -q "keystoreProperties" android/app/build.gradle.kts 2>/dev/null && ! grep -q "keystoreProperties" android/app/build.gradle 2>/dev/null; then
-            echo "Adding release signing config to build.gradle.kts"
-            # For Kotlin DSL build.gradle.kts
-            if [ -f android/app/build.gradle.kts ]; then
-              # Add signing config - simplified: will be added via patch
-              echo "build.gradle.kts found, adding keystoreProperties"
-            fi
-          fi
-
       - name: Create .env
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > flutter_app/.env
@@ -71,13 +42,56 @@ jobs:
         working-directory: flutter_app
         run: flutter create --platforms=android .
 
-      - name: Fix compileSdk and ensure assets
+      - name: Generate Release Keystore (Same for all builds to allow updates)
+        working-directory: flutter_app
+        run: |
+          # Ensure android folder exists first
+          mkdir -p android/app
+          # Restore from secret if available, else generate once
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release-keystore.jks
+            echo "Restored permanent keystore from secret"
+          elif [ ! -f "release-keystore.jks" ]; then
+            keytool -genkey -v -keystore release-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -storepass AiSuperAgent2026! -keypass AiSuperAgent2026! -alias aisuperagent -dname "CN=Mahicouragw, OU=AI Super Agent, O=Mahicouragw, L=Pune, ST=Maharashtra, C=IN"
+            echo "Generated new release keystore for update-friendly installs"
+          fi
+          ls -lh release-keystore.jks || true
+          # Create key.properties
+          cat > android/key.properties << 'EOF'
+          storePassword=AiSuperAgent2026!
+          keyPassword=AiSuperAgent2026!
+          keyAlias=aisuperagent
+          storeFile=../release-keystore.jks
+          EOF
+          cat android/key.properties
+
+      - name: Fix compileSdk and ensure assets & signing
         working-directory: flutter_app
         run: |
           sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/compileSdk 34/compileSdk 36/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/compileSdk = 34/compileSdk = 36/g' android/app/build.gradle.kts 2>/dev/null || true
           sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle.kts 2>/dev/null || true
+          if [ -f android/app/build.gradle.kts ]; then
+            # Add imports and signing config if missing
+            if ! grep -q "keystoreProperties" android/app/build.gradle.kts; then
+              python3 - << 'PY'
+          import pathlib
+          path = pathlib.Path("android/app/build.gradle.kts")
+          content = path.read_text()
+          if "import java.util.Properties" not in content:
+              content = "import java.util.Properties\nimport java.io.FileInputStream\n" + content
+          content = content.replace("java.util.Properties()", "Properties()").replace("java.io.FileInputStream", "FileInputStream")
+          if "keystoreProperties" not in content:
+              content = content.replace('android {', 'val keystoreProperties = Properties()\nval keystorePropertiesFile = rootProject.file("key.properties")\nif (keystorePropertiesFile.exists()) {\n    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n}\n\nandroid {', 1)
+              content = content.replace('    buildTypes {', '    signingConfigs {\n        create("release") {\n            keyAlias = keystoreProperties["keyAlias"] as String\n            keyPassword = keystoreProperties["keyPassword"] as String\n            storeFile = file(keystoreProperties["storeFile"] as String)\n            storePassword = keystoreProperties["storePassword"] as String\n        }\n    }\n\n    buildTypes {')
+          import re
+          content = re.sub(r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)', 'signingConfig = signingConfigs.getByName("release")', content)
+          pathlib.Path("android/app/build.gradle.kts").write_text(content)
+          print("Fixed signing config")
+          PY
+            fi
+          fi
           mkdir -p assets && touch assets/.gitkeep
 
       - name: Add permissions
