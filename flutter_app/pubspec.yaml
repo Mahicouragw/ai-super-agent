@@ -1,7 +1,7 @@
 name: ai_super_agent
 description: AI Super Agent - Production Quality - Real AI Engine, Multi-Agent, Secure Auth, TalkBack Accessible
 publish_to: 'none'
-version: 1.0.3+33
+version: 1.0.4+34
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -31,7 +31,6 @@ dependencies:
   flutter_tts: ^4.0.2
   record: ^6.1.0
   google_sign_in: ^6.2.1
-  passkeys: ^0.2.0
   connectivity_plus: ^6.0.3
   local_auth: ^2.1.7
 
