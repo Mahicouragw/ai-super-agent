@@ -12,7 +12,7 @@ class GoogleSignInService {
   final _supabase = SupabaseConfig.client;
 
   /// Sign in with Google - shows Google account chooser
-  Future<AuthResponse?> signInWithGoogle() async {
+  Future<supabase_auth.AuthResponse?> signInWithGoogle() async {
     try {
       final googleUser = await _googleSignIn.signIn();
       if (googleUser == null) return null; // User cancelled
