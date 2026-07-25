@@ -30,7 +30,6 @@ class PasskeyService {
       final didAuth = await _localAuth.authenticate(
         localizedReason: 'Create Passkey for $email - Verify your identity',
         options: const AuthenticationOptions(
-          biometricHint: false,
           stickyAuth: true,
         ),
       );
@@ -74,7 +73,6 @@ class PasskeyService {
       final didAuth = await _localAuth.authenticate(
         localizedReason: 'Login with Passkey for $email',
         options: const AuthenticationOptions(
-          biometricHint: false,
           stickyAuth: true,
         ),
       );

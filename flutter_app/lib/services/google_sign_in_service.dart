@@ -1,5 +1,5 @@
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase_auth;
 import '../config/supabase_config.dart';
 
 /// Google Sign-In - Secure, uses Supabase Auth with Google provider
@@ -27,7 +27,7 @@ class GoogleSignInService {
 
       // Sign in to Supabase with Google ID token - secure, backend verifies
       final response = await _supabase.auth.signInWithIdToken(
-        provider: Provider.google,
+        provider: supabase_auth.Provider.google,
         idToken: idToken,
         accessToken: accessToken,
       );
