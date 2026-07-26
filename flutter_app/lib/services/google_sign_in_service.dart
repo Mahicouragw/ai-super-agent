@@ -1,6 +1,6 @@
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show Provider, AuthResponse;
-import 'package:supabase_flutter/supabase_flutter.dart' as supabase_lib;
+import 'package:supabase_flutter/supabase_flutter.dart' hide Provider;
+import 'package:supabase/supabase.dart' show Provider;
 import '../config/supabase_config.dart';
 
 class GoogleSignInService {
