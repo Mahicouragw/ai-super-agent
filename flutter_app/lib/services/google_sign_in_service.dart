@@ -16,7 +16,7 @@ class GoogleSignInService {
       if (accessToken == null || idToken == null) {
         throw Exception('Google authentication failed');
       }
-      // Provider renamed to OAuthProvider in supabase_flutter v2 to avoid collision with provider package
+      // OAuthProvider is the new name for Provider in supabase_flutter v2 to avoid collision with provider package
       final response = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
