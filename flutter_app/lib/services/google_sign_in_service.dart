@@ -1,6 +1,5 @@
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:gotrue/src/types/provider.dart' show Provider;
 import '../config/supabase_config.dart';
 
 class GoogleSignInService {
@@ -17,8 +16,9 @@ class GoogleSignInService {
       if (accessToken == null || idToken == null) {
         throw Exception('Google authentication failed');
       }
+      // Provider renamed to OAuthProvider in supabase_flutter v2 to avoid collision with provider package
       final response = await _supabase.auth.signInWithIdToken(
-        provider: Provider.google,
+        provider: OAuthProvider.google,
         idToken: idToken,
         accessToken: accessToken,
       );
