@@ -15,7 +15,7 @@ class GoogleSignInService {
   Future<AuthResponse?> signInWithGoogle() async {
     try {
       final googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null; // User cancelled
+      if (googleUser == null) return null;
 
       final googleAuth = await googleUser.authentication;
       final accessToken = googleAuth.accessToken;
@@ -25,7 +25,7 @@ class GoogleSignInService {
         throw Exception('Google authentication failed');
       }
 
-      // Sign in to Supabase with Google ID token - secure, backend verifies
+      // Use Provider enum from supabase_flutter - should be available as top-level Provider
       final response = await _supabase.auth.signInWithIdToken(
         provider: Provider.google,
         idToken: idToken,
@@ -34,7 +34,6 @@ class GoogleSignInService {
 
       return response;
     } catch (e) {
-      // Clean error - don't expose internal details
       if (e.toString().toLowerCase().contains('network') || e.toString().toLowerCase().contains('connection')) {
         throw Exception('Please check your internet connection');
       }
