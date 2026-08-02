@@ -25,10 +25,16 @@ jobs:
           echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
           echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
           echo "OPENROUTER_MODEL=${{ secrets.OPENROUTER_MODEL }}" >> .env
-      - name: Build APK
+      - name: Ensure Android platform (keeps com.example.ai_super_agent)
         working-directory: flutter_app
         run: |
           flutter pub get
+          if [ ! -d android ]; then
+            flutter create --platforms=android --project-name ai_super_agent .
+          fi
+      - name: Build APK
+        working-directory: flutter_app
+        run: |
           flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:
