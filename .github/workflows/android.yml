@@ -5,6 +5,9 @@ on:
   push:
     tags: ['android-*']
 
+permissions:
+  contents: write
+
 jobs:
   apk:
     runs-on: ubuntu-latest
