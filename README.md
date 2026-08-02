@@ -132,3 +132,13 @@ Repo: https://github.com/Mahicouragw/ai-super-agent
 Supabase Project: https://bwjoqomechsubjvwwbbk.supabase.co (Mumbai ap-south-1)
 Project Ref: bwjoqomechsubjvwwbbk
 APK: Check Actions tab for app-release.apk artifact
+
+## v1.1.0 — Configurable LLM + cleaner chat
+- ⚙️ **AI Model & Key settings** (dashboard gear icon): choose Built-in Edge (no key),
+  OpenRouter (any :free or paid model), or any OpenAI-compatible custom endpoint.
+  Keys are stored only in the Android Keystore (flutter_secure_storage).
+- 🐛 **Fixed**: the model selector now actually changes the model used for chat
+  (previously the picker saved a choice the AI service never read).
+- 💬 **Cleaner chat**: animated "AI is thinking" indicator, copy button on every
+  reply, auto-scroll, friendly error banner (no raw exceptions in chat),
+  quick-action chips send instantly.

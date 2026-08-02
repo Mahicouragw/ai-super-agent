@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// LMArena Style Screen - Shows how model works: thinking -> analyzing -> responding
 /// Like https://lmarena.ai - side-by-side model comparison with steps
@@ -18,6 +19,18 @@ class _ArenaScreenState extends State<ArenaScreen> {
   String _responseB = '';
   String _modelA = 'openai/gpt-4o-mini';
   String _modelB = 'groq/llama-3.1-70b-versatile';
+
+  @override
+  void initState() {
+    super.initState();
+    // v1.1.0: side A defaults to the model chosen in the model selector.
+    SharedPreferences.getInstance().then((prefs) {
+      final picked = prefs.getString('selected_model');
+      if (picked != null && picked.trim().isNotEmpty && mounted) {
+        setState(() => _modelA = picked.trim());
+      }
+    }).catchError((_) {});
+  }
 
   Future<void> _sendArena() async {
     final prompt = _promptController.text.trim();

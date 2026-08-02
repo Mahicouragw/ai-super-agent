@@ -21,8 +21,7 @@ class RemoteConfigService {
         }
         
         // Cache for offline
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_cacheKey, config.toString()); // Simplified
+          await prefs.setString(_cacheKey, config.toString()); // Simplified
         await prefs.setString(_cacheTimeKey, DateTime.now().toIso8601String());
         
         return config;

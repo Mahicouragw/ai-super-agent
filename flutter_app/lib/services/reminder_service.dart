@@ -1,4 +1,3 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 
 /// Reminder Service - daily tasks, newspaper/news every day

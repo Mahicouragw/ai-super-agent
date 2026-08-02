@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../services/ai_agent_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/wispr_flow_service.dart';
+import '../llm_settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -100,8 +102,16 @@ What to build?'''}
       } catch (_) {}
 
     } catch (e) {
+      // v1.1.0: friendly error — never leak raw exceptions into the chat.
       setState(() {
-        _messages.add({'role': 'assistant', 'content': 'I am real agent working locally safely. Even offline I can help! You said: "$text". Try again with different prompt or check internet for free expensive models.'});
+        _messages.add({
+          'role': 'assistant',
+          'content': '⚠️ **I could not reach an AI service just now.**\n\n'
+              'Your message is safe: "$text"\n\n'
+              '• Check your internet connection, then tap send again.\n'
+              '• If you configured a custom AI key in **Settings → AI Model & Key**, verify it is correct.\n'
+              '• Otherwise the built-in AI service may be temporarily busy — please retry in a moment.'
+        });
         _thinkingSteps = [];
       });
     } finally {
@@ -184,6 +194,7 @@ What to build?'''}
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(icon: const Icon(Icons.settings_input_component), tooltip: 'AI Model and Key settings', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LlmSettingsScreen()))),
           IconButton(icon: const Icon(Icons.model_training), tooltip: 'Choose Real Expensive Free Forever Model', onPressed: () async {
             final selected = await Navigator.pushNamed(context, '/models');
             if (selected != null) setState(() => _selectedModel = selected as String);
@@ -208,24 +219,58 @@ What to build?'''}
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(12),
-              itemCount: _messages.length,
+              itemCount: _messages.length + (_loading ? 1 : 0),
               itemBuilder: (ctx, i) {
+                if (i >= _messages.length) {
+                  // v1.1.0: typing indicator instead of a bare progress bar
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(width: 8),
+                        Text('AI is thinking', style: TextStyle(color: Colors.deepPurple, fontSize: 12)),
+                        SizedBox(width: 6),
+                        _TypingDots(),
+                      ],
+                    ),
+                  );
+                }
                 final m = _messages[i];
                 final isUser = m['role'] == 'user';
+                final bubble = Container(
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  padding: const EdgeInsets.all(14),
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+                  decoration: BoxDecoration(color: isUser ? Colors.deepPurple : Colors.grey[100], borderRadius: BorderRadius.circular(16)),
+                  child: MarkdownBody(data: m['content'] ?? '', styleSheet: MarkdownStyleSheet(p: TextStyle(color: isUser ? Colors.white : Colors.black87, fontSize: 13))),
+                );
+                if (isUser) {
+                  return Align(alignment: Alignment.centerRight, child: bubble);
+                }
+                // v1.1.0: copy button under assistant replies
                 return Align(
-                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    padding: const EdgeInsets.all(14),
-                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
-                    decoration: BoxDecoration(color: isUser ? Colors.deepPurple : Colors.grey[100], borderRadius: BorderRadius.circular(16)),
-                    child: MarkdownBody(data: m['content'] ?? '', styleSheet: MarkdownStyleSheet(p: TextStyle(color: isUser ? Colors.white : Colors.black87, fontSize: 13))),
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(child: bubble),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Copy reply',
+                        icon: const Icon(Icons.copy, size: 16),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: m['content'] ?? ''));
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reply copied to clipboard'), duration: Duration(seconds: 1)));
+                        },
+                      ),
+                    ],
                   ),
                 );
               },
             ),
           ),
-          if (_loading) const LinearProgressIndicator(),
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
@@ -269,6 +314,50 @@ What to build?'''}
           ),
         ],
       ),
+    );
+  }
+}
+
+/// v1.1.0 — animated three-dot typing indicator (TalkBack announces "AI is thinking").
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (ctx, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            final t = (_controller.value - i * 0.18) % 1.0;
+            final scale = 0.5 + 0.5 * t;
+            return Container(
+              width: 7,
+              height: 7,
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(color: Colors.deepPurple, shape: BoxShape.circle),
+              transform: Matrix4.identity()..scale(scale),
+            );
+          }),
+        );
+      },
     );
   }
 }

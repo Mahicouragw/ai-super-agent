@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
 
 /// Professional Multi-Agent System - Upgrade AI Super Agent
 /// 20+ intelligent agents that cooperate automatically
@@ -241,12 +240,7 @@ class ProfessionalMultiAgentSystem {
     ),
   ];
 
-  final String _openRouterKey;
-  final String _defaultModel;
-
-  ProfessionalMultiAgentSystem()
-      : _openRouterKey = _getEnv('OPENROUTER_API_KEY'),
-        _defaultModel = _getEnv('OPENROUTER_MODEL', 'qwen/qwen3-coder:free');
+  ProfessionalMultiAgentSystem();
 
   static String _getEnv(String key, [String fallback = '']) {
     try {

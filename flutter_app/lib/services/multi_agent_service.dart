@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 /// Multi-Agent Orchestration Service
@@ -48,10 +49,25 @@ class SubAgentTask {
 class MultiAgentService {
   final String _openRouterKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
   final String _model = dotenv.env['OPENROUTER_MODEL'] ?? 'anthropic/claude-opus-4.5';
+  static String? _runtimeModelOverride; // set from the in-app model picker
+
+  /// v1.1.0 — lets the arena honor the model chosen in the model selector.
+  static Future<void> refreshRuntimeModel() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final picked = prefs.getString('selected_model');
+      if (picked != null && picked.trim().isNotEmpty) {
+        _runtimeModelOverride = picked.trim();
+      }
+    } catch (_) {}
+  }
 
   // Claude Opus and Claude Sonnet are best for multi-agent reasoning
   // OpenRouter models: anthropic/claude-opus-4.5, anthropic/claude-3-5-sonnet, openai/gpt-4o, google/gemini-2.0-flash-001
   String get _effectiveModel {
+    if (_runtimeModelOverride != null && _runtimeModelOverride!.isNotEmpty) {
+      return _runtimeModelOverride!;
+    }
     // If user wants Claude Opus or CloudSonic (Sonnet), use Opus as default per request
     if (_model.contains('opus') || _model.contains('sonnet') || _model.contains('claude')) {
       return _model;

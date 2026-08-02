@@ -1,37 +1,59 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/supabase_config.dart';
+import 'llm_settings.dart';
 import 'supabase_service.dart';
 
 class AIAgentService {
-  // Clean system prompt - no internal details exposed
+  // Clean system prompt - no internal details exposed.
+  // v1.1.0: stronger response quality rules (structure, markdown, honesty).
   static const String systemPrompt = '''
 You are AI Super Agent, a helpful AI assistant like ChatGPT and Gemini.
 
-You can chat naturally, answer questions, write content, generate ideas, help with coding, explain things simply.
-
-Available capabilities (use naturally, don't list unless asked):
-- Chat, Q&A, explanations
-- Writing: stories, lyrics, songs, blogs, content
-- Coding: Flutter apps, debugging, code generation
-- Creative: images (provide detailed prompts), videos (scripts), songs (lyrics + melody description)
-- Information: search, news, reports
-- Files: PDFs, documents
-
-Be friendly, concise, helpful like ChatGPT. Don't mention system internals, API keys, models, tokens, providers, Supabase, or infrastructure. Just be a great assistant.
+Response quality rules:
+- Be clear, accurate and friendly. Answer in the user's language when they use one.
+- Use short paragraphs, bullet lists and markdown headings for anything longer than 3 lines.
+- If you don't know something, say so honestly instead of guessing.
+- When asked for code, give complete working code with a one-line explanation.
+- For creative requests (images/videos), provide ready-to-use detailed prompts or scripts.
+- Never mention system internals, API keys, models, tokens, providers, Supabase, or infrastructure.
 ''';
 
   final SupabaseService _supabaseService = SupabaseService();
 
-  // Main chat - clean ChatGPT-like behavior
+  // Main chat — clean ChatGPT-like behavior.
+  // Priority chain (v1.1.0):
+  //   1. User-configured LLM (Settings → AI Model & Key): custom base URL or OpenRouter
+  //   2. Supabase Edge Function (default, no key needed)
+  //   3. OpenRouter from .env
+  //   4. Clean local fallback
   Future<String> chat(String userMessage, {List<Map<String, dynamic>>? history}) async {
     // Save user message (try, don't fail if offline)
     try {
       await _supabaseService.saveChatMessage(role: 'user', content: userMessage);
     } catch (_) {}
 
-    // 1. Try Edge Function (primary, handles all models via OpenRouter - Claude Opus, GPT-4o, Groq, Gemini)
+    // 1. User-configured LLM first (Settings → AI Model & Key)
+    try {
+      final settings = await LlmSettingsService.load();
+      if (settings.isDirect) {
+        final directResult = settings.provider == 'openrouter'
+            ? await _callOpenRouterDirect(userMessage, history, overrideSettings: settings)
+            : await _callCustomDirect(userMessage, history, settings);
+        if (directResult != null && directResult.trim().isNotEmpty) {
+          try {
+            await _supabaseService.saveChatMessage(role: 'assistant', content: directResult);
+          } catch (_) {}
+          return directResult;
+        }
+      }
+    } catch (e) {
+      print('User LLM config failed, trying next: $e');
+    }
+
+    // 2. Try Edge Function (primary, handles all models via OpenRouter)
     try {
       final edgeResult = await _callEdgeFunction(userMessage, history);
       if (edgeResult != null && edgeResult.trim().isNotEmpty) {
@@ -44,7 +66,7 @@ Be friendly, concise, helpful like ChatGPT. Don't mention system internals, API 
       print('Edge function trying fallback: $e');
     }
 
-    // 2. Try direct OpenRouter from app (if key in .env)
+    // 3. Try direct OpenRouter from app (if key in .env)
     try {
       final orResult = await _callOpenRouterDirect(userMessage, history);
       if (orResult != null && orResult.trim().isNotEmpty) {
@@ -55,8 +77,50 @@ Be friendly, concise, helpful like ChatGPT. Don't mention system internals, API 
       }
     } catch (_) {}
 
-    // 3. Clean fallback - ChatGPT style, no secrets
+    // 4. Clean fallback - ChatGPT style, no secrets
     return _cleanChatFallback(userMessage);
+  }
+
+  /// OpenAI-compatible chat call for a fully user-configured endpoint.
+  Future<String?> _callCustomDirect(String message, List<Map<String, dynamic>>? history, LlmSettings s) async {
+    final model = s.effectiveModel;
+    if (model.isEmpty) return null;
+    final base = s.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    try {
+      final trimmedHistory = (history ?? []).length > 4 ? history!.sublist(history.length - 4) : history ?? [];
+      final messages = <Map<String, String>>[
+        {'role': 'system', 'content': systemPrompt},
+        for (final h in trimmedHistory)
+          {
+            'role': h['role'] == 'user' ? 'user' : 'assistant',
+            'content': (h['content'] ?? '').toString(),
+          },
+        {'role': 'user', 'content': message},
+      ];
+      final res = await http.post(
+        Uri.parse('$base/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer ${s.apiKey}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'model': model,
+          'messages': messages,
+          'temperature': 0.7,
+          'max_tokens': 1500,
+        }),
+      ).timeout(const Duration(seconds: 45));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final content = data['choices']?[0]?['message']?['content'];
+        if (content != null && content.toString().trim().isNotEmpty) return content.toString();
+      } else {
+        print('Custom LLM HTTP ${res.statusCode}: ${res.body.toString().substring(0, res.body.length > 160 ? 160 : res.body.length)}');
+      }
+    } catch (e) {
+      print('Custom LLM error: $e');
+    }
+    return null;
   }
 
   // Call Edge Function - clean, handles token limits internally
@@ -103,12 +167,21 @@ Be friendly, concise, helpful like ChatGPT. Don't mention system internals, API 
     return null;
   }
 
-  // Direct OpenRouter call from app with token limit handling
-  Future<String?> _callOpenRouterDirect(String message, List<Map<String, dynamic>>? history) async {
-    final apiKey = dotenv.env['OPENROUTER_API_KEY'] ?? '';
+  // Direct OpenRouter call from app with token limit handling.
+  // v1.1.0: honors the user's runtime settings (Settings → AI Model & Key) and
+  // the in-app model selector — the picker now actually changes the model.
+  Future<String?> _callOpenRouterDirect(String message, List<Map<String, dynamic>>? history, {LlmSettings? overrideSettings}) async {
+    String apiKey = overrideSettings?.apiKey ?? dotenv.env['OPENROUTER_API_KEY'] ?? '';
     if (apiKey.isEmpty) return null;
 
-    final model = dotenv.env['OPENROUTER_MODEL'] ?? 'anthropic/claude-opus-4.5';
+    String model = overrideSettings?.effectiveModel ?? dotenv.env['OPENROUTER_MODEL'] ?? 'anthropic/claude-opus-4.5';
+    if (overrideSettings == null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final picked = prefs.getString('selected_model');
+        if (picked != null && picked.trim().isNotEmpty) model = picked.trim();
+      } catch (_) {}
+    }
     
     try {
       // Trim to avoid 1400 token limit issues

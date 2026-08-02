@@ -1,5 +1,4 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
 /// Encrypt sensitive local data - Security requirement
@@ -16,13 +15,8 @@ class SecureStorageService {
   static const String _keyUserSession = 'user_session_encrypted';
   static const String _keyUserEmail = 'user_email_encrypted';
   static const String _keyDeviceAccounts = 'device_accounts_encrypted';
-  static const String _keyChatHistory = 'chat_history_encrypted';
   static const String _keyLongTermMemory = 'long_term_memory_enabled';
 
-  // Encrypt with SHA256 for simple obfuscation + secure storage handles encryption
-  String _hash(String input) {
-    return sha256.convert(utf8.encode(input)).toString();
-  }
 
   Future<void> saveUserSession(String sessionJson) async {
     try {
