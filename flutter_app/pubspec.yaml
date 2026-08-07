@@ -1,7 +1,7 @@
 name: ai_super_agent
 description: AI Super Agent - Production Quality - Real AI Engine, Multi-Agent, Secure Auth, TalkBack Accessible
 publish_to: 'none'
-version: 1.1.0+35
+version: 1.1.1+36
 
 environment:
   sdk: '>=3.2.0 <4.0.0'

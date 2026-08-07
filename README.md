@@ -142,3 +142,7 @@ APK: Check Actions tab for app-release.apk artifact
 - 💬 **Cleaner chat**: animated "AI is thinking" indicator, copy button on every
   reply, auto-scroll, friendly error banner (no raw exceptions in chat),
   quick-action chips send instantly.
+
+## v1.1.1 Android release refresh
+
+The Android workflow now analyzes the Flutter source before building, uses a stable application version, keeps runtime credentials in GitHub Secrets, and publishes a consistently named `AISuperAgent.apk`.

@@ -21,31 +21,37 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Prepare .env from secrets (optional)
+      - name: Prepare optional runtime configuration
         working-directory: flutter_app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
         run: |
-          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
-          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
-          echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
-          echo "OPENROUTER_MODEL=${{ secrets.OPENROUTER_MODEL }}" >> .env
-      - name: Ensure Android platform (keeps com.example.ai_super_agent)
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\nOPENROUTER_API_KEY=%s\nOPENROUTER_MODEL=%s\n' \
+            "$SUPABASE_URL" "$SUPABASE_ANON_KEY" "$OPENROUTER_API_KEY" "$OPENROUTER_MODEL" > .env
+      - name: Ensure Android platform
         working-directory: flutter_app
         run: |
           flutter pub get
           if [ ! -d android ]; then
-            flutter create --platforms=android --project-name ai_super_agent .
+            flutter create --platforms=android --org com.mahicouragw --project-name ai_super_agent .
           fi
-      - name: Build APK
+      - name: Analyze and build APK
         working-directory: flutter_app
         run: |
+          flutter analyze --no-fatal-infos
           flutter build apk --debug
+      - name: Normalize APK filename
+        run: cp flutter_app/build/app/outputs/flutter-apk/app-debug.apk AISuperAgent.apk
       - uses: actions/upload-artifact@v4
         with:
           name: AISuperAgent.apk
-          path: flutter_app/build/app/outputs/flutter-apk/*.apk
+          path: AISuperAgent.apk
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/android-')
         uses: softprops/action-gh-release@v2
         with:
-          files: flutter_app/build/app/outputs/flutter-apk/*.apk
+          files: AISuperAgent.apk
           generate_release_notes: true
