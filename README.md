@@ -58,15 +58,15 @@ flutter_app/lib/
 supabase/
 ├── migrations/init.sql
 └── functions/ai-agent/index.ts     # Edge function for AI (secure OpenAI key)
-.github/workflows/build-apk.yml     # Auto-build APK on push
+.github/workflows/android.yml       # Build APK on demand or an android-* tag
 ```
 
 ## How to Build APK
 
 ### Option 1: GitHub Actions (Recommended - No local setup)
 1. Push this repo to GitHub
-2. Go to Actions -> Build APK -> Run
-3. Download artifact `app-release.apk`
+2. Go to Actions → Android APK → Run workflow
+3. Download the `AISuperAgent-apk` artifact, or install the current verified release: [AISuperAgent.apk (v1.1.1)](https://github.com/Mahicouragw/ai-super-agent/releases/download/android-v1.1.1/AISuperAgent.apk)
 4. Install on tablet/computer
 
 ### Option 2: Local
@@ -131,7 +131,7 @@ Built with Flutter + Supabase + OpenAI
 Repo: https://github.com/Mahicouragw/ai-super-agent
 Supabase Project: https://bwjoqomechsubjvwwbbk.supabase.co (Mumbai ap-south-1)
 Project Ref: bwjoqomechsubjvwwbbk
-APK: Check Actions tab for app-release.apk artifact
+APK: [Download the current AISuperAgent.apk release](https://github.com/Mahicouragw/ai-super-agent/releases/download/android-v1.1.1/AISuperAgent.apk) or use the `AISuperAgent-apk` Actions artifact
 
 ## v1.1.0 — Configurable LLM + cleaner chat
 - ⚙️ **AI Model & Key settings** (dashboard gear icon): choose Built-in Edge (no key),
